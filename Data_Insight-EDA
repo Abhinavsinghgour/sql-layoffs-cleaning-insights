@@ -103,9 +103,8 @@ LIMIT 10;
 
 -- TOUGHER QUERIES------------------------------------------------------------------------------------------------------------------------------------
 
--- Earlier we looked at Companies with the most Layoffs. Now let's look at that per year. It's a little more difficult.
--- I want to look at 
-SELECT SUBSTRING(date,1,7) as dates, SUM(total_laid_off) AS total_laid_off
+
+SELECT SUBSTRING(date,1,7) as dates, SUM(total_laid_off) AS total_off
 FROM layoffs_staging2
 GROUP BY dates
 ORDER BY dates ASC;
@@ -119,7 +118,7 @@ ORDER BY 1 ASC
 ;
 
 -- Creating "Dates" column containing year-month which give clear data insight.ALTER
-
+-- Rolling Total of Layoffs Per Month
 SELECT substring(`date`,1,7) as Dates, SUM(total_laid_off)
 FROM layoffs_staging2
 WHERE substring(`date`,1,7) IS NOT NULL
@@ -129,4 +128,81 @@ ORDER BY 1 ASC
 
 -- now use it in a CTE so we can query off of it
 -- Rolling total
+
+
+-- complete Rolling total
+WITH DATE_CTE AS 
+(
+SELECT SUBSTRING(date,1,7) as dates, SUM(total_laid_off) AS total_laid_off
+FROM layoffs_staging2
+WHERE SUBSTRING(date,1,7) IS NOT NULL
+GROUP BY dates
+ORDER BY dates ASC
+)
+SELECT dates, SUM(total_laid_off) OVER (PARTITION BY YEAR(`date`) ORDER BY dates ASC) as rolling_total_layoffs
+FROM DATE_CTE
+ORDER BY dates ASC;
+
+
+
+
+--  year vise rolling total  
+WITH DATE_CTE AS (
+    SELECT 
+        SUBSTRING(date, 1, 7) AS month, -- YYYY-MM
+        YEAR(date) AS year,  -- if i want year vise rolling total then we have to use "year" column
+        SUM(total_laid_off) AS total_laid_off
+    FROM layoffs_staging2
+    WHERE date IS NOT NULL
+    GROUP BY year, month
+)
+SELECT 
+    month,
+    year, -- if i want year vise rolling total then we have to use "year" column
+    total_laid_off,
+    SUM(total_laid_off) OVER (PARTITION BY year ORDER BY month) AS rolling_total_layoffs  -- Use ORDER BY inside OVER() → to calculate rolling totals in the correct order.
+FROM DATE_CTE
+ORDER BY year, month;  -- Use ORDER BY outside → to display your results nicely.
+
+## NOTES: 
+-- 🧮 1. ORDER BY inside OVER() → Affects how the rolling total is calculated
+
+-- SUM(total_laid_off) OVER (PARTITION BY year ORDER BY month)
+
+-- PARTITION BY year: resets the cumulative total each year.
+-- ORDER BY month: ensures the cumulative total is added in chronological order within each year.
+
+-- Use ORDER BY outside → to display your results nicely.
+
+
+
+
+
+
+
+
+-- Earlier we looked at Companies with the most Layoffs. Now let's look at that per year. It's a little more difficult.
+-- I want to look at 
+WITH COMPANY_YEAR AS
+(
+SELECT company, year(`date`) as years, Sum(total_laid_off) as total_off
+FROM layoffs_staging2
+WHERE total_laid_off IS NOT NULL
+GROUP BY company, years
+-- ORDER BY total_off DESC
+),
+company_year_rank AS
+(
+SELECT * ,
+DENSE_RANK() OVER(PARTITION BY years ORDER BY total_off DESC) as Ranking
+FROM company_year
+WHERE years is not null
+-- ORDER BY Ranking ASC
+)
+SELECT *
+FROM company_year_rank
+WHERE ranking <= 5
+;
+
+
 
